@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Startup Impact Viewer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #1a1a1a;
+    color: #ccc;
+    font: 14px/1.4 'Segoe UI', sans-serif;
+    padding: 20px;
+  }
+
+  h1 { color: #e8d5a3; font-size: 18px; }
+
+  #topbar { border-bottom: 1px solid #2a2a2a; padding-bottom: 12px; margin-bottom: 20px; }
+  .topbar-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .topbar-sep { border-top: 1px solid #2a2a2a; margin: 10px 0; }
+  #file-status { font-size: 12px; color: #666; margin-top: 3px; font-style: italic; word-break: break-all; }
+
+  #drop-placeholder {
+    border: 2px dashed #333;
+    border-radius: 6px;
+    padding: 60px 20px;
+    text-align: center;
+  }
+  #drop-placeholder.drag-over { border-color: #666; }
+  #content { display: none; }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-box {
+    background: #252525;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 12px 16px;
+  }
+  .stat-box .label { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat-box .value { font-size: 22px; color: #e8d5a3; font-weight: bold; margin-top: 2px; }
+  .stat-box .sub { font-size: 12px; color: #888; margin-top: 2px; }
+
+  .section-title {
+    font-size: 13px;
+    color: #b8a882;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #333;
+  }
+
+  #legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin-bottom: 20px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #999;
+  }
+  .legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .controls input[type=search] {
+    background: #252525;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #ccc;
+    padding: 5px 10px;
+    font-size: 13px;
+    width: 240px;
+    outline: none;
+  }
+  .controls input[type=search]:focus { border-color: #777; }
+  .controls label { font-size: 12px; color: #888; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .controls input[type=checkbox] { cursor: pointer; }
+
+  #mod-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  #mod-table thead th {
+    background: #222;
+    color: #999;
+    font-size: 11px;
+    font-weight: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 8px 10px;
+    text-align: left;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid #333;
+    white-space: nowrap;
+  }
+  #mod-table thead th:hover { color: #ccc; }
+  #mod-table thead th.sorted { color: #e8d5a3; }
+  #mod-table thead th .sort-arrow { margin-left: 4px; opacity: 0.5; }
+  #mod-table thead th.sorted .sort-arrow { opacity: 1; }
+
+  #mod-table tbody tr {
+    border-bottom: 1px solid #2a2a2a;
+    transition: background 0.1s;
+  }
+  #mod-table tbody tr:hover { background: #262626; }
+  #mod-table tbody tr.expanded { background: #232323; }
+
+  #mod-table tbody td {
+    padding: 6px 10px;
+    vertical-align: middle;
+  }
+
+  .td-rank { color: #555; font-size: 12px; width: 36px; }
+  .td-name { max-width: 340px; }
+  .td-name .mod-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .td-name a {
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .td-name a:hover {
+    color: #e8d5a3;
+    text-decoration: underline;
+  }
+  .td-time { width: 90px; color: #e8d5a3; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .td-pct  { width: 58px; color: #888; font-variant-numeric: tabular-nums; font-size: 12px; }
+  .td-bar  { width: 100%; min-width: 160px; }
+  .td-expand { width: 28px; text-align: center; }
+
+  .expand-btn {
+    background: none;
+    border: none;
+    color: #555;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 2px 4px;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .expand-btn:hover { color: #aaa; }
+
+  .bar-track {
+    height: 16px;
+    background: #2a2a2a;
+    border-radius: 3px;
+    overflow: hidden;
+    display: flex;
+  }
+  .bar-segment {
+    height: 100%;
+    min-width: 0;
+    transition: opacity 0.15s;
+  }
+  .bar-segment:hover { opacity: 0.8; }
+
+  .detail-row td {
+    padding: 0 !important;
+    border-bottom: 1px solid #333;
+  }
+  .detail-inner {
+    padding: 10px 10px 10px 46px;
+    background: #1e1e1e;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 20px;
+  }
+  .detail-inner h4 {
+    grid-column: 1 / -1;
+    font-size: 11px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+    margin-top: 6px;
+  }
+  .detail-inner h4:first-child { margin-top: 0; }
+  .cat-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .cat-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .cat-name { color: #aaa; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cat-time { color: #e8d5a3; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cat-pct  { color: #666; font-size: 11px; white-space: nowrap; }
+
+  #tooltip {
+    position: fixed;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #ccc;
+    pointer-events: none;
+    display: none;
+    z-index: 999;
+    max-width: 360px;
+    white-space: pre-wrap;
+  }
+
+  .no-results { color: #555; padding: 20px 10px; text-align: center; }
+
+  .mods-btn {
+    background: #2a2a2a;
+    border: 1px solid #555;
+    border-radius: 3px;
+    color: #ccc;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .mods-btn:hover { border-color: #aaa; color: #fff; }
+
+  .paths-list { margin-top: 6px; }
+  .path-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #666;
+    padding: 1px 0;
+  }
+  .path-tag {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 2px;
+    padding: 0 4px;
+    font-size: 10px;
+    color: #777;
+    flex-shrink: 0;
+  }
+  .path-text { color: #555; word-break: break-all; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="topbar-row">
+    <div>
+      <h1>RimWorld — Startup Impact Viewer</h1>
+      <div id="file-status">Looking for StartupImpactData.xml…</div>
+    </div>
+    <button class="mods-btn" onclick="openXmlFile()">Open different file…</button>
+  </div>
+  <div class="topbar-sep"></div>
+  <div class="topbar-row">
+    <span id="mods-status" style="font-size:12px;color:#777;font-style:italic;">Searching for RimWorld installs…</span>
+    <div style="display:flex;gap:6px;">
+      <button class="mods-btn" onclick="addModsFolder()">+ Add folder…</button>
+      <button class="mods-btn" onclick="rescanAll()">↺ Rescan</button>
+    </div>
+  </div>
+  <div id="mods-paths" class="paths-list"></div>
+</div>
+
+<div id="drop-placeholder">
+  <div style="font-size:13px;color:#555;margin-bottom:6px;">Could not find StartupImpactData.xml automatically.</div>
+  <div style="font-size:12px;color:#444;">Drag the file here, or use <em>Open different file…</em> above.</div>
+</div>
+
+<div id="content">
+
+  <div class="summary-grid">
+    <div class="stat-box">
+      <div class="label">Total loading time</div>
+      <div class="value" id="stat-total"></div>
+    </div>
+    <div class="stat-box">
+      <div class="label">Mod loading time</div>
+      <div class="value" id="stat-mods"></div>
+      <div class="sub" id="stat-mods-pct"></div>
+    </div>
+    <div class="stat-box">
+      <div class="label">Base game / other</div>
+      <div class="value" id="stat-base"></div>
+      <div class="sub" id="stat-base-pct"></div>
+    </div>
+    <div class="stat-box">
+      <div class="label">Mods tracked</div>
+      <div class="value" id="stat-modcount"></div>
+    </div>
+  </div>
+
+  <div class="section-title" style="margin-bottom:10px;">Category legend</div>
+  <div id="legend"></div>
+
+  <div class="controls">
+    <input type="search" id="search" placeholder="Filter mods…" oninput="renderTable()">
+    <label>
+      <input type="checkbox" id="log-scale" onchange="renderTable()">
+      Logarithmic bar scale
+    </label>
+    <label>
+      <input type="checkbox" id="hide-zero" onchange="renderTable()">
+      Hide mods with 0 ms
+    </label>
+  </div>
+
+  <table id="mod-table">
+    <thead>
+      <tr>
+        <th class="td-expand"></th>
+        <th data-col="rank" class="td-rank sorted" onclick="setSort('rank')">
+          # <span class="sort-arrow">▲</span>
+        </th>
+        <th data-col="name" onclick="setSort('name')">
+          Mod name <span class="sort-arrow"></span>
+        </th>
+        <th data-col="time" onclick="setSort('time')">
+          Time <span class="sort-arrow"></span>
+        </th>
+        <th data-col="pct" onclick="setSort('pct')">
+          % <span class="sort-arrow"></span>
+        </th>
+        <th>Impact breakdown</th>
+      </tr>
+    </thead>
+    <tbody id="mod-tbody"></tbody>
+  </table>
+  <div id="no-results" class="no-results" style="display:none;">No mods match your filter.</div>
+</div>
+
+<div id="tooltip"></div>
+
+<script src="/js/neutralino.js"></script>
+<script>
+// ── Category colours (matches the game's DialogStartupImpact) ──────────────
+const CATEGORY_COLORS = {
+  'LoadingProgress.StartupImpact.ModConstructor':                          '#9c9343',
+  'LoadingProgress.StartupImpact.LoadDefs':                                '#43549c',
+  'LoadingProgress.StartupImpact.CombineXml':                              '#828282',
+  'LoadingProgress.StartupImpact.TKeySystemParse':                         '#54cf9a',
+  'LoadingProgress.StartupImpact.ErrorCheckPatches':                       '#4879af',
+  'LoadingProgress.StartupImpact.LoadPatches':                             '#889c43',
+  'LoadingProgress.StartupImpact.ApplyPatches':                            '#9c4379',
+  'LoadingProgress.StartupImpact.RegisterXmlInheritance':                  '#b0dfe0',
+  'LoadingProgress.StartupImpact.ResolveXmlInheritance':                   '#521a6a',
+  'LoadingProgress.StartupImpact.ClearCachedPatches':                      '#3f6d7d',
+  'LoadingProgress.StartupImpact.ClearCachedXmlInheritance':               '#76885c',
+  'LoadingProgress.StartupImpact.LanguageDatabaseInitAllMetadata':         '#9e5c5d',
+  'LoadingProgress.StartupImpact.DefDatabaseAddAllInMods':                 '#a86340',
+  'LoadingProgress.StartupImpact.ResolveAllWantedCrossReferences.NonImplied': '#5e7a97',
+  'LoadingProgress.StartupImpact.DefOfHelperRebindAllDefOfs.Early':        '#8979a1',
+  'LoadingProgress.StartupImpact.DefOfHelperRebindAllDefOfs.Final':        '#1c4c54',
+  'LoadingProgress.StartupImpact.TKeySystemBuildMappings':                 '#b6a877',
+  'LoadingProgress.StartupImpact.BackStoryTranslationUtilityLoadAndInjectBackstoryData': '#3c316d',
+  'LoadingProgress.StartupImpact.ModContentPackReloadContentInt.AudioClips':  '#93aa8f',
+  'LoadingProgress.StartupImpact.ModContentPackReloadContentInt.Textures':    '#9d8c68',
+  'LoadingProgress.StartupImpact.ModContentPackReloadContentInt.Strings':     '#5c5652',
+  'LoadingProgress.StartupImpact.ModContentPackReloadContentInt.AssetBundles':'#a39b6e',
+  'LoadingProgress.StartupImpact.LoadedLanguageInjectIntoDataBeforeImpliedDefs': '#7a477a',
+  'LoadingProgress.StartupImpact.ColoredTextResetStaticData':              '#a98eac',
+  'LoadingProgress.StartupImpact.DefGeneratorGenerateImpliedDefsPreResolve':'#94573a',
+  'LoadingProgress.StartupImpact.ResolveAllWantedCrossReferences.Implied': '#916a4b',
+  'LoadingProgress.StartupImpact.PlayDataLoaderResetStaticDataPre':        '#bdab85',
+  'LoadingProgress.StartupImpact.ResolveReferences':                       '#607e6e',
+  'LoadingProgress.StartupImpact.DefGeneratorGenerateImpliedDefsPostResolve': '#4c6884',
+  'LoadingProgress.StartupImpact.PlayDataLoaderResetStaticDataPost':       '#a4bdd0',
+  'LoadingProgress.StartupImpact.ErrorCheckAllDefs':                       '#9d8c68',
+  'LoadingProgress.StartupImpact.KeyPrefsInit':                            '#856980',
+  'LoadingProgress.StartupImpact.ShortHashGiverGiveAllShortHashes':        '#b09d93',
+  'LoadingProgress.StartupImpact.SolidBioDatabaseLoadAllBios':             '#566288',
+  'LoadingProgress.StartupImpact.LoadedLanguageInjectIntoDataAfterImpliedDefs': '#8e99aa',
+  'LoadingProgress.StartupImpact.StaticConstructorOnStartupUtilityCallAll': '#ab7283',
+  'LoadingProgress.StartupImpact.FloatMenuMakerMapInit':                   '#786c56',
+  'LoadingProgress.StartupImpact.GlobalTextureAtlasManagerBakeStaticAtlases': '#835860',
+  'LoadingProgress.StartupImpact.AbstractFilesystemClearAllCache':         '#72638f',
+};
+const DEFAULT_COLOR = '#808080';
+const OTHER_KEY = '__other__';
+
+function colorFor(key) {
+  return CATEGORY_COLORS[key] || DEFAULT_COLOR;
+}
+
+function shortName(key) {
+  if (key === OTHER_KEY) return 'Other (misc callbacks)';
+  const prefix = 'LoadingProgress.StartupImpact.';
+  if (key.startsWith(prefix)) {
+    const rest = key.slice(prefix.length);
+    if (rest.startsWith('ExecuteToExecuteWhenFinished|')) return null;
+    return rest;
+  }
+  return key;
+}
+
+function fmtMs(ms) {
+  if (ms > 10000) return (ms / 1000).toFixed(1) + 's';
+  return ms.toFixed(0) + 'ms';
+}
+
+// ── XML parsing ────────────────────────────────────────────────────────────
+function parseDictionary(el) {
+  const result = {};
+  if (!el) return result;
+  const keys = [...el.querySelectorAll(':scope > keys > li')].map(n => n.textContent);
+  const vals = [...el.querySelectorAll(':scope > values > li')].map(n => parseFloat(n.textContent));
+  keys.forEach((k, i) => { result[k] = vals[i] || 0; });
+  return result;
+}
+
+function collapseMetrics(raw) {
+  const out = {};
+  let otherSum = 0;
+  for (const [k, v] of Object.entries(raw)) {
+    const short = shortName(k);
+    if (short === null) otherSum += v;
+    else out[k] = v;
+  }
+  if (otherSum > 0) out[OTHER_KEY] = otherSum;
+  return out;
+}
+
+function parseXML(text) {
+  const dom = new DOMParser().parseFromString(text, 'application/xml');
+  const err = dom.querySelector('parsererror');
+  if (err) throw new Error('XML parse error: ' + err.textContent.slice(0, 200));
+
+  const sd = dom.querySelector('sessionData');
+  if (!sd) throw new Error('Not a StartupImpactData file (missing <sessionData> root).');
+  const loadingTime = parseFloat(sd.querySelector(':scope > loadingTime')?.textContent || '0');
+
+  const mods = [...sd.querySelectorAll(':scope > mods > li')].map(li => {
+    const modName = li.querySelector(':scope > modName')?.textContent || '(unknown)';
+    const ti = parseFloat(li.querySelector(':scope > totalImpact')?.textContent || '0');
+    const otti = parseFloat(li.querySelector(':scope > offThreadTotalImpact')?.textContent || '0');
+    const rawM = parseDictionary(li.querySelector(':scope > metrics'));
+    const rawOT = parseDictionary(li.querySelector(':scope > offThreadMetrics'));
+    return {
+      modName,
+      totalImpact: ti,
+      offThreadTotalImpact: otti,
+      metrics: collapseMetrics(rawM),
+      offThreadMetrics: collapseMetrics(rawOT),
+    };
+  });
+
+  mods.sort((a, b) => b.totalImpact - a.totalImpact);
+  mods.forEach((m, i) => m.rank = i + 1);
+
+  const modTotal = mods.reduce((s, m) => s + m.totalImpact, 0);
+  const baseTime = loadingTime - modTotal;
+
+  return { loadingTime, mods, modTotal, baseTime };
+}
+
+// ── State ─────────────────────────────────────────────────────────────────
+let sessionData = null;
+let sortCol = 'rank';
+let sortAsc = true;
+let expandedRows = new Set();
+let workshopIdMap = {};
+
+const STORAGE_KEY = 'rimworld_workshop_id_map';
+const PATHS_KEY   = 'rimworld_mods_paths';
+
+let scannedPaths = [];
+
+function pathTag(p) {
+  if (/steam/i.test(p)) return 'Steam';
+  if (/gog/i.test(p))   return 'GOG';
+  return 'Custom';
+}
+
+function updatePathsDisplay() {
+  const el = document.getElementById('mods-paths');
+  if (!el) return;
+  el.innerHTML = scannedPaths.map(p =>
+    `<div class="path-item">
+      <span class="path-tag">${pathTag(p)}</span>
+      <span class="path-text" title="${esc(p)}">${esc(p)}</span>
+    </div>`
+  ).join('');
+}
+
+function setModsStatus(text, ok = false) {
+  const el = document.getElementById('mods-status');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = ok ? '#7a9' : '#777';
+  el.style.fontStyle = ok ? 'normal' : 'italic';
+}
+
+// ── Neutralino init ────────────────────────────────────────────────────────
+Neutralino.init();
+Neutralino.events.on('windowClose', () => Neutralino.app.exit());
+
+async function getXmlDefaultPath() {
+  const appdata = await Neutralino.os.getEnv('APPDATA');
+  if (!appdata) return null;
+  const base = appdata.replace(/[/\\]AppData[/\\]Roaming$/i, '');
+  const sep = appdata.includes('\\') ? '\\' : '/';
+  return [base, 'AppData', 'LocalLow', 'Ludeon Studios',
+    'RimWorld by Ludeon Studios', 'StartupImpactData.xml'].join(sep);
+}
+
+async function autoLoadXml() {
+  const path = await getXmlDefaultPath();
+  if (!path) return false;
+  try {
+    const content = await Neutralino.filesystem.readFile(path);
+    sessionData = parseXML(content);
+    setFileStatus(path);
+    render();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function setFileStatus(path) {
+  const el = document.getElementById('file-status');
+  if (!el) return;
+  el.textContent = path;
+  el.title = path;
+  el.style.fontStyle = 'normal';
+  el.style.color = '#666';
+}
+
+// Common RimWorld Mods folder locations
+const COMMON_MODS_PATHS = [
+  'C:\\Program Files (x86)\\Steam\\steamapps\\common\\RimWorld\\Mods',
+  'C:\\Program Files\\Steam\\steamapps\\common\\RimWorld\\Mods',
+  'C:\\Program Files (x86)\\GOG Galaxy\\Games\\RimWorld\\Mods',
+  'C:\\Program Files\\GOG Galaxy\\Games\\RimWorld\\Mods',
+];
+
+// Restore saved map and paths from previous session
+try {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) workshopIdMap = JSON.parse(saved);
+} catch (_) {}
+try {
+  const savedPaths = localStorage.getItem(PATHS_KEY);
+  if (savedPaths) scannedPaths = JSON.parse(savedPaths);
+} catch (_) {}
+
+if (scannedPaths.length > 0) {
+  const count = Object.keys(workshopIdMap).length;
+  setModsStatus(`${count} mods mapped — links open Workshop pages directly`, true);
+  updatePathsDisplay();
+} else {
+  autoDetectModsFolder().catch(() => {
+    setModsStatus('Mods folder not found — use "+ Add folder…" to locate it manually');
+  });
+}
+
+// Auto-load XML concurrently with mods detection
+autoLoadXml().then(found => {
+  if (!found) {
+    document.getElementById('file-status').textContent = 'File not found automatically — drag it here or use "Open different file…"';
+  }
+}).catch(() => {
+  document.getElementById('file-status').textContent = 'File not found automatically — drag it here or use "Open different file…"';
+});
+
+// ── File open (native dialog) ──────────────────────────────────────────────
+async function openXmlFile() {
+  let selected;
+  try {
+    selected = await Neutralino.os.showOpenDialog('Open StartupImpactData.xml', {
+      filters: [{ name: 'XML files', extensions: ['xml'] }]
+    });
+  } catch (_) { return; }
+  if (!selected || !selected.length) return;
+  const path = selected[0];
+  try {
+    const content = await Neutralino.filesystem.readFile(path);
+    sessionData = parseXML(content);
+    setFileStatus(path);
+    render();
+  } catch (err) {
+    alert('Error reading file:\n' + err.message);
+  }
+}
+
+// ── Drag and drop ─────────────────────────────────────────────────────────
+document.addEventListener('dragover', e => {
+  e.preventDefault();
+  document.getElementById('drop-placeholder').classList.add('drag-over');
+});
+document.addEventListener('dragleave', e => {
+  if (!e.relatedTarget) document.getElementById('drop-placeholder').classList.remove('drag-over');
+});
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  document.getElementById('drop-placeholder').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      sessionData = parseXML(ev.target.result);
+      setFileStatus(f.name);
+      render();
+    } catch (err) {
+      alert('Error parsing file:\n' + err.message);
+    }
+  };
+  reader.readAsText(f);
+});
+
+// ── Scan Mods folder ──────────────────────────────────────────────────────
+
+// Returns a {name→id} map for one folder without touching global state
+async function buildMapForFolder(folder) {
+  const sep = folder.includes('\\') ? '\\' : '/';
+  const entries = await Neutralino.filesystem.readDirectory(folder);
+  const map = {};
+
+  for (const entry of entries) {
+    if (entry.type !== 'DIRECTORY') continue;
+    const name = entry.entry;
+    if (name === '.' || name === '..') continue;
+
+    const aboutDir = folder + sep + name + sep + 'About';
+    let workshopId = '';
+
+    try {
+      const pfid = await Neutralino.filesystem.readFile(aboutDir + sep + 'PublishedFileId.txt');
+      const id = pfid.trim();
+      if (/^\d+$/.test(id)) workshopId = id;
+    } catch (_) {}
+
+    if (!workshopId && /^\d+$/.test(name)) workshopId = name;
+
+    if (workshopId) {
+      try {
+        const xml = await Neutralino.filesystem.readFile(aboutDir + sep + 'About.xml');
+        const dom = new DOMParser().parseFromString(xml, 'application/xml');
+        const nameEl = dom.querySelector('ModMetaData > name');
+        if (nameEl) map[nameEl.textContent.trim().toLowerCase()] = workshopId;
+      } catch (_) {}
+    }
+  }
+  return map;
+}
+
+// Merges maps from all given folders, saves, and updates status
+async function doScanFolders(folders) {
+  const merged = {};
+  for (const folder of folders) {
+    try {
+      Object.assign(merged, await buildMapForFolder(folder));
+    } catch (_) {}
+  }
+
+  workshopIdMap = merged;
+  scannedPaths = [...folders];
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch (_) {}
+  try { localStorage.setItem(PATHS_KEY, JSON.stringify(scannedPaths)); } catch (_) {}
+
+  const count = Object.keys(merged).length;
+  const loc = folders.length === 1 ? '' : ` from ${folders.length} installs`;
+  setModsStatus(`${count} mods mapped${loc} — links open Workshop pages directly`, true);
+  updatePathsDisplay();
+  if (sessionData) renderTable();
+  return count;
+}
+
+async function addModsFolder() {
+  let folder;
+  try {
+    folder = await Neutralino.os.showFolderDialog('Select an additional RimWorld Mods folder');
+  } catch (_) { return; }
+  if (!folder || scannedPaths.includes(folder)) return;
+
+  setModsStatus('Scanning…');
+  try {
+    const extra = await buildMapForFolder(folder);
+    Object.assign(workshopIdMap, extra);
+    scannedPaths = [...scannedPaths, folder];
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(workshopIdMap)); } catch (_) {}
+    try { localStorage.setItem(PATHS_KEY, JSON.stringify(scannedPaths)); } catch (_) {}
+    const count = Object.keys(workshopIdMap).length;
+    const loc = scannedPaths.length === 1 ? '' : ` from ${scannedPaths.length} installs`;
+    setModsStatus(`${count} mods mapped${loc} — links open Workshop pages directly`, true);
+    updatePathsDisplay();
+    if (sessionData) renderTable();
+  } catch (err) {
+    setModsStatus('Error scanning folder: ' + err.message);
+  }
+}
+
+async function rescanAll() {
+  if (scannedPaths.length === 0) { await autoDetectModsFolder(); return; }
+  setModsStatus('Rescanning…');
+  await doScanFolders(scannedPaths);
+}
+
+async function regQuery(args) {
+  try {
+    const r = await Neutralino.os.execCommand('reg query ' + args);
+    return r.stdOut || '';
+  } catch (_) { return ''; }
+}
+
+async function tryModsPath(path) {
+  try {
+    const entries = await Neutralino.filesystem.readDirectory(path);
+    if (entries.some(e => e.type === 'DIRECTORY' && e.entry !== '.' && e.entry !== '..')) {
+      return path;
+    }
+  } catch (_) {}
+  return null;
+}
+
+async function findSteamModsPath() {
+  // Get Steam install path from registry
+  const out = await regQuery('"HKCU\\SOFTWARE\\Valve\\Steam" /v SteamPath');
+  const m = out.match(/SteamPath\s+REG_SZ\s+(.+)/i);
+  if (!m) return null;
+  const steamPath = m[1].trim();
+
+  // Collect library paths: start with the Steam root, then parse libraryfolders.vdf
+  const libRoots = [steamPath];
+  try {
+    const vdf = await Neutralino.filesystem.readFile(
+      steamPath + '\\steamapps\\libraryfolders.vdf'
+    );
+    // Handles both modern ("path" key) and legacy (numbered key) VDF formats
+    for (const [, raw] of vdf.matchAll(/"path"\s+"([^"]+)"/gi)) {
+      libRoots.push(raw.replace(/\\\\/g, '\\'));
+    }
+    for (const [, raw] of vdf.matchAll(/"[0-9]+"\s+"([A-Za-z]:\\[^"]+)"/gi)) {
+      libRoots.push(raw.replace(/\\\\/g, '\\'));
+    }
+  } catch (_) {}
+
+  for (const root of libRoots) {
+    const found = await tryModsPath(root + '\\steamapps\\common\\RimWorld\\Mods');
+    if (found) return found;
+  }
+  return null;
+}
+
+async function findGogModsPath() {
+  // Enumerate all GOG game entries and find RimWorld by name
+  const out = await regQuery('"HKLM\\SOFTWARE\\WOW6432Node\\GOG.com\\Games" /s');
+  if (!out) return null;
+
+  // Split into per-key sections and search for a RimWorld entry
+  const sections = out.split(/(?=HKEY)/);
+  for (const section of sections) {
+    if (!/gameName\s+REG_SZ\s+RimWorld\b/i.test(section)) continue;
+    const pm = section.match(/\bpath\s+REG_SZ\s+(.+)/i);
+    if (!pm) continue;
+    const found = await tryModsPath(pm[1].trim() + '\\Mods');
+    if (found) return found;
+  }
+  return null;
+}
+
+async function autoDetectModsFolder() {
+  const found = [];
+
+  const steamPath = await findSteamModsPath();
+  if (steamPath) found.push(steamPath);
+
+  const gogPath = await findGogModsPath();
+  if (gogPath && !found.includes(gogPath)) found.push(gogPath);
+
+  // Hardcoded fallbacks for anything the registry missed
+  if (found.length === 0) {
+    for (const p of COMMON_MODS_PATHS) {
+      const valid = await tryModsPath(p);
+      if (valid && !found.includes(valid)) found.push(valid);
+    }
+  }
+
+  if (found.length === 0) {
+    setModsStatus('Mods folder not found — use "+ Add folder…" to locate it manually');
+    return false;
+  }
+
+  await doScanFolders(found);
+  return true;
+}
+
+// ── Mod link click → open in default browser ──────────────────────────────
+document.getElementById('mod-tbody').addEventListener('click', e => {
+  const a = e.target.closest('a.mod-link');
+  if (!a) return;
+  e.preventDefault();
+  Neutralino.os.open(a.dataset.url).catch(() => {});
+});
+
+// ── Render ────────────────────────────────────────────────────────────────
+function render() {
+  document.getElementById('drop-placeholder').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+
+  const d = sessionData;
+  document.getElementById('stat-total').textContent = fmtMs(d.loadingTime);
+  document.getElementById('stat-mods').textContent = fmtMs(d.modTotal);
+  document.getElementById('stat-mods-pct').textContent =
+    (d.modTotal / d.loadingTime * 100).toFixed(1) + '% of total';
+  document.getElementById('stat-base').textContent = fmtMs(Math.max(0, d.baseTime));
+  document.getElementById('stat-base-pct').textContent =
+    (Math.max(0, d.baseTime) / d.loadingTime * 100).toFixed(1) + '% of total';
+  document.getElementById('stat-modcount').textContent = d.mods.length;
+
+  buildLegend();
+  renderTable();
+}
+
+function buildLegend() {
+  const container = document.getElementById('legend');
+  container.innerHTML = '';
+  const seen = new Set();
+  for (const m of sessionData.mods) {
+    Object.keys(m.metrics).forEach(k => seen.add(k));
+    Object.keys(m.offThreadMetrics).forEach(k => seen.add(k));
+  }
+  seen.add(OTHER_KEY);
+  const orderedKeys = [
+    ...Object.keys(CATEGORY_COLORS).filter(k => seen.has(k)),
+    ...(seen.has(OTHER_KEY) ? [OTHER_KEY] : []),
+  ];
+  for (const key of orderedKeys) {
+    const name = (key === OTHER_KEY) ? 'Other' : shortName(key);
+    if (!name) continue;
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<div class="legend-swatch" style="background:${colorFor(key)}"></div><span>${name}</span>`;
+    container.appendChild(item);
+  }
+}
+
+function setSort(col) {
+  if (sortCol === col) {
+    sortAsc = !sortAsc;
+  } else {
+    sortCol = col;
+    sortAsc = (col === 'rank' || col === 'name');
+  }
+  document.querySelectorAll('#mod-table thead th[data-col]').forEach(th => {
+    const c = th.dataset.col;
+    th.classList.toggle('sorted', c === sortCol);
+    const arrow = th.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = (c === sortCol) ? (sortAsc ? '▲' : '▼') : '';
+  });
+  renderTable();
+}
+
+function renderTable() {
+  const filter = document.getElementById('search').value.toLowerCase();
+  const logScale = document.getElementById('log-scale').checked;
+  const hideZero = document.getElementById('hide-zero').checked;
+
+  let rows = [...sessionData.mods];
+  if (hideZero) rows = rows.filter(m => m.totalImpact > 0);
+  if (filter) rows = rows.filter(m => m.modName.toLowerCase().includes(filter));
+
+  rows.sort((a, b) => {
+    let va, vb;
+    if (sortCol === 'rank') { va = a.rank; vb = b.rank; }
+    else if (sortCol === 'name') { va = a.modName.toLowerCase(); vb = b.modName.toLowerCase(); }
+    else { va = a.totalImpact; vb = b.totalImpact; }
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+
+  const maxImpact = sessionData.mods[0]?.totalImpact || 1;
+  const tbody = document.getElementById('mod-tbody');
+  tbody.innerHTML = '';
+
+  const noResults = document.getElementById('no-results');
+  if (rows.length === 0) { noResults.style.display = ''; return; }
+  noResults.style.display = 'none';
+
+  for (const mod of rows) {
+    const tr = document.createElement('tr');
+    const expanded = expandedRows.has(mod.rank);
+    if (expanded) tr.classList.add('expanded');
+
+    const pct = (mod.totalImpact / sessionData.loadingTime * 100).toFixed(1);
+    tr.innerHTML = `
+      <td class="td-expand">
+        <button class="expand-btn" data-rank="${mod.rank}" title="Show category breakdown">
+          ${expanded ? '▾' : '▸'}
+        </button>
+      </td>
+      <td class="td-rank">${mod.rank}</td>
+      <td class="td-name"><div class="mod-name" title="${esc(mod.modName)}">${modLink(mod)}</div></td>
+      <td class="td-time">${fmtMs(mod.totalImpact)}</td>
+      <td class="td-pct">${pct}%</td>
+      <td class="td-bar">${buildBar(mod.metrics, mod.totalImpact, maxImpact, logScale)}</td>
+    `;
+    tbody.appendChild(tr);
+
+    if (expanded) {
+      const detailTr = document.createElement('tr');
+      detailTr.className = 'detail-row';
+      detailTr.innerHTML = `<td colspan="6">${buildDetail(mod)}</td>`;
+      tbody.appendChild(detailTr);
+    }
+  }
+
+  tbody.querySelectorAll('.expand-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const rank = parseInt(btn.dataset.rank);
+      if (expandedRows.has(rank)) expandedRows.delete(rank);
+      else expandedRows.add(rank);
+      renderTable();
+    });
+  });
+
+  tbody.querySelectorAll('.bar-segment[data-tip]').forEach(seg => {
+    seg.addEventListener('mouseenter', e => showTip(e, seg.dataset.tip));
+    seg.addEventListener('mousemove', moveTip);
+    seg.addEventListener('mouseleave', hideTip);
+  });
+}
+
+function buildBar(metrics, totalImpact, maxImpact, logScale) {
+  if (totalImpact <= 0) return '<div class="bar-track"></div>';
+  const scale = v => {
+    if (!logScale) return v / maxImpact;
+    if (v <= 0) return 0;
+    return Math.log(v + 1) / Math.log(maxImpact + 1);
+  };
+  const barWidth = scale(totalImpact);
+  const entries = Object.entries(metrics).sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((s, [, v]) => s + v, 0) || 1;
+  let segs = '';
+  for (const [key, val] of entries) {
+    if (val <= 0) continue;
+    const segPct = (val / total * 100 * barWidth).toFixed(3);
+    const tip = `${shortName(key) || 'Other'}: ${fmtMs(val)}`;
+    segs += `<div class="bar-segment" style="width:${segPct}%;background:${colorFor(key)}" data-tip="${esc(tip)}"></div>`;
+  }
+  return `<div class="bar-track">${segs}</div>`;
+}
+
+function buildDetail(mod) {
+  const sections = [
+    { title: 'On-thread categories', metrics: mod.metrics, total: mod.totalImpact },
+  ];
+  if (mod.offThreadTotalImpact > 0) {
+    sections.push({ title: 'Off-thread categories', metrics: mod.offThreadMetrics, total: mod.offThreadTotalImpact });
+  }
+  let html = '<div class="detail-inner">';
+  for (const { title, metrics, total } of sections) {
+    html += `<h4>${title} — ${fmtMs(total)}</h4>`;
+    const sorted = Object.entries(metrics).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    for (const [key, val] of sorted) {
+      const name = shortName(key) || 'Other (misc callbacks)';
+      const pct = total > 0 ? (val / total * 100).toFixed(1) : '0.0';
+      html += `
+        <div class="cat-row">
+          <div class="cat-swatch" style="background:${colorFor(key)}"></div>
+          <span class="cat-name" title="${esc(name)}">${esc(name)}</span>
+          <span class="cat-time">${fmtMs(val)}</span>
+          <span class="cat-pct">${pct}%</span>
+        </div>`;
+    }
+  }
+  html += '</div>';
+  return html;
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+function showTip(e, text) {
+  tooltip.textContent = text;
+  tooltip.style.display = 'block';
+  moveTip(e);
+}
+function moveTip(e) {
+  let x = e.clientX + 12, y = e.clientY + 12;
+  if (x + 250 > window.innerWidth) x = e.clientX - 260;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+function hideTip() { tooltip.style.display = 'none'; }
+
+function modLink(mod) {
+  const id = workshopIdMap[mod.modName.toLowerCase()];
+  const url = id
+    ? `https://steamcommunity.com/sharedfiles/filedetails/?id=${id}`
+    : `https://steamcommunity.com/workshop/browse/?appid=294100&searchtext=${encodeURIComponent(mod.modName)}&browsesort=textsearch`;
+  return `<a href="#" class="mod-link" data-url="${esc(url)}">${esc(mod.modName)}</a>`;
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

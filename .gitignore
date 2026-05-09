@@ -1,0 +1,13 @@
+# Neutralino binaries (fetched via `neu update`)
+/bin/
+
+# Build output
+/dist/
+
+# Runtime files
+/.tmp/
+/.storage/
+*.log
+
+# Auth artifacts
+auth_info.json
